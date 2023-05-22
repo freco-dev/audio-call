@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Audio Call Client</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      background-color: #f2f2f2;
+    }
+
+    h1 {
+      color: #333;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px;
+      margin: 10px;
+      background-color: #007bff;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    .button:hover {
+      background-color: #0056b3;
+    }
+
+    .button-icon {
+      margin-right: 5px;
+    }
+
+    .audio-icon {
+      font-size: 24px;
+      color: #fff;
+    }
+
+    canvas {
+      width: 400px;
+      height: 200px;
+      background-color: #fff;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Audio Call Client</h1>
+    <button id="joinButton" class="button" disabled>
+      <i class="fas fa-microphone button-icon"></i>
+      Join Call
+    </button>
+    <button id="leaveButton" class="button" disabled>
+      <i class="fas fa-phone-slash button-icon"></i>
+      Leave Call
+    </button>
+    <canvas id="visualizer"></canvas>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.3.1/socket.io.js"></script>
+  <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+  <script>
+    // Connect to the server
+    const socket = io.connect('http://localhost:3000');
+    const roomId = 'myRoomId';
+    const joinButton = document.getElementById('joinButton');
+    const leaveButton = document.getElementById('leaveButton');
+    const visualizerCanvas = document.getElementById('visualizer');
+    const visualizerContext = visualizerCanvas.getContext('2d');
+    let animationFrameId;
+
+    // Enable Join Call button when connected to the server
+    socket.on('connect', function () {
+      joinButton.disabled = false;
+    });
+
+    // Disable Join Call button when disconnected from the server
+    socket.on('disconnect', function () {
+      joinButton.disabled = true;
+      leaveButton.disabled = true;
+    });
+
+    joinButton.addEventListener('click', function () {
+      socket.emit('join', roomId);
+      joinButton.disabled = true;
+      leaveButton.disabled = false;
+    });
+
+    leaveButton.addEventListener('click', function () {
+      socket.emit('leave', roomId);
+      leaveButton.disabled = true;
+      joinButton.disabled = false;
+    });
+
+    // Update UI when receiving audio data
+    socket.on('audio', function (audioData) {
+      // Play the received audio data or process it as needed
+      playAudio(audioData);
+    });
+
+    // Function to play audio
+    function playAudio(audioData) {
+      // Convert audioData to an audio element or perform custom audio processing
+      const audioElement = new Audio();
+      audioElement.src = audioData;
+      audioElement.play();
+
+      // Start audio visualization
+      visualizeAudio(audioElement);
+    }
+
+    // Function to visualize audio
+    function visualizeAudio(audioElement) {
+      // Create an audio context
+      const audioContext = new AudioContext();
+      const audioSource = audioContext.createMediaElementSource(audioElement);
+
+      // Create an analyser node
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      // Connect the audio source to the analyser
+      audioSource.connect(analyser);
+      audioSource.connect(audioContext.destination);
+
+      // Start animation loop for visualizing audio
+      drawVisualizer();
+
+      function drawVisualizer() {
+        animationFrameId = requestAnimationFrame(drawVisualizer);
+
+        // Clear the canvas
+        visualizerContext.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+
+        // Get waveform data from the analyser
+        analyser.getByteTimeDomainData(dataArray);
+
+        // Set up the visualizer styles
+        visualizerContext.lineWidth = 2;
+        visualizerContext.strokeStyle = '#007bff';
+
+        // Start drawing the waveform
+        visualizerContext.beginPath();
+        const sliceWidth = visualizerCanvas.width / bufferLength;
+        let x = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          const v = dataArray[i] / 128.0;
+          const y = (v * visualizerCanvas.height) / 2;
+
+          if (i === 0) {
+            visualizerContext.moveTo(x, y);
+          } else {
+            visualizerContext.lineTo(x, y);
+          }
+
+          x += sliceWidth;
+        }
+
+        // Finish drawing the waveform
+        visualizerContext.lineTo(visualizerCanvas.width, visualizerCanvas.height / 2);
+        visualizerContext.stroke();
+      }
+    }
+
+    // Stop animation and release resources when leaving the page
+    window.addEventListener('beforeunload', function () {
+      cancelAnimationFrame(animationFrameId);
+    });
+  </script>
+</body>
+</html>
